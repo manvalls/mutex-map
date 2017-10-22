@@ -14,22 +14,22 @@ type resource struct {
 	queue   []consumer
 }
 
-// LM is a keyed RWMutex
-type LM struct {
+// Lock is a keyed RWMutex
+type Lock struct {
 	mutex *sync.Mutex
 	locks map[string]*resource
 }
 
-// NewLM returns a new LM
-func NewLM() *LM {
-	return &LM{
+// NewLock returns a new Lock
+func NewLock() *Lock {
+	return &Lock{
 		mutex: &sync.Mutex{},
 		locks: make(map[string]*resource),
 	}
 }
 
 // Lock acquires the write lock on the given key
-func (lm *LM) Lock(key string) {
+func (lm *Lock) Lock(key string) {
 
 	lm.mutex.Lock()
 	r := lm.resource(key)
@@ -53,7 +53,7 @@ func (lm *LM) Lock(key string) {
 }
 
 // RLock acquires a read lock on the given key
-func (lm *LM) RLock(key string) {
+func (lm *Lock) RLock(key string) {
 
 	lm.mutex.Lock()
 	r := lm.resource(key)
@@ -77,7 +77,7 @@ func (lm *LM) RLock(key string) {
 }
 
 // RUnlock releases a read lock on the given key
-func (lm *LM) RUnlock(key string) {
+func (lm *Lock) RUnlock(key string) {
 	lm.mutex.Lock()
 	defer lm.mutex.Unlock()
 	r := lm.resource(key)
@@ -105,7 +105,7 @@ func (lm *LM) RUnlock(key string) {
 }
 
 // Unlock releases the write lock on the given key
-func (lm *LM) Unlock(key string) {
+func (lm *Lock) Unlock(key string) {
 	lm.mutex.Lock()
 	defer lm.mutex.Unlock()
 	r := lm.resource(key)
@@ -135,7 +135,7 @@ func (lm *LM) Unlock(key string) {
 	}
 }
 
-func (lm *LM) resource(key string) *resource {
+func (lm *Lock) resource(key string) *resource {
 
 	r, ok := lm.locks[key]
 
