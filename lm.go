@@ -1,17 +1,15 @@
 // Package lm implements a keyed RWMutex
 package lm
 
-import "sync"
-
-type consumer struct {
-	reader  bool
-	channel *chan bool
-}
+import (
+	"sync"
+)
 
 type resource struct {
-	readers uint
-	writers uint
-	queue   []consumer
+	readers    uint64
+	writers    uint64
+	readQueue  []*chan bool
+	writeQueue []*chan bool
 }
 
 // Lock is a keyed RWMutex
@@ -32,7 +30,7 @@ func NewLock() *Lock {
 func (lm *Lock) Lock(key string) {
 
 	lm.mutex.Lock()
-	r := lm.resource(key)
+	r := lm.resource(key, true)
 
 	if r.writers == 0 && r.readers == 0 {
 		r.writers++
@@ -41,11 +39,7 @@ func (lm *Lock) Lock(key string) {
 	}
 
 	c := make(chan bool, 1)
-
-	r.queue = append(r.queue, consumer{
-		reader:  false,
-		channel: &c,
-	})
+	r.writeQueue = append(r.writeQueue, &c)
 
 	lm.mutex.Unlock()
 	<-c
@@ -56,20 +50,16 @@ func (lm *Lock) Lock(key string) {
 func (lm *Lock) RLock(key string) {
 
 	lm.mutex.Lock()
-	r := lm.resource(key)
+	r := lm.resource(key, true)
 
-	if r.writers == 0 {
+	if r.writers == 0 && len(r.writeQueue) == 0 {
 		r.readers++
 		lm.mutex.Unlock()
 		return
 	}
 
 	c := make(chan bool, 1)
-
-	r.queue = append(r.queue, consumer{
-		reader:  true,
-		channel: &c,
-	})
+	r.readQueue = append(r.readQueue, &c)
 
 	lm.mutex.Unlock()
 	<-c
@@ -80,73 +70,73 @@ func (lm *Lock) RLock(key string) {
 func (lm *Lock) RUnlock(key string) {
 	lm.mutex.Lock()
 	defer lm.mutex.Unlock()
-	r := lm.resource(key)
+	r := lm.resource(key, false)
 
-	if r.readers > 0 {
+	if r != nil && r.readers > 0 {
 
 		r.readers--
 
 		if r.readers == 0 {
 
-			if len(r.queue) > 0 {
-				c := r.queue[0]
-				r.queue = r.queue[1:]
+			if len(r.writeQueue) > 0 {
+				c := r.writeQueue[0]
+				r.writeQueue = r.writeQueue[1:]
 				r.writers++
-				*c.channel <- true
+				*c <- true
+			} else {
+				delete(lm.locks, key)
 			}
 
 		}
 
 	}
 
-	if r.writers == 0 && r.readers == 0 {
-		delete(lm.locks, key)
-	}
 }
 
 // Unlock releases the write lock on the given key
 func (lm *Lock) Unlock(key string) {
 	lm.mutex.Lock()
 	defer lm.mutex.Unlock()
-	r := lm.resource(key)
+	r := lm.resource(key, false)
 
-	if r.writers > 0 {
+	if r != nil && r.writers > 0 {
 
 		r.writers--
 
-		for len(r.queue) > 0 {
-			c := r.queue[0]
-			r.queue = r.queue[1:]
+		if len(r.writeQueue) > 0 {
+			c := r.writeQueue[0]
+			r.writeQueue = r.writeQueue[1:]
+			r.writers++
+			*c <- true
+		} else if len(r.readQueue) > 0 {
+			r.readers += uint64(len(r.readQueue))
 
-			if c.reader {
-				r.readers++
-				*c.channel <- true
-			} else {
-				r.writers++
-				*c.channel <- true
-				break
+			for _, c := range r.readQueue {
+				*c <- true
 			}
+
+			r.readQueue = make([]*chan bool, 0, 1)
+		} else {
+			delete(lm.locks, key)
 		}
 
 	}
 
-	if r.writers == 0 && r.readers == 0 {
-		delete(lm.locks, key)
-	}
 }
 
-func (lm *Lock) resource(key string) *resource {
+func (lm *Lock) resource(key string, create bool) *resource {
 
 	r, ok := lm.locks[key]
 
-	if ok {
+	if ok || !create {
 		return r
 	}
 
 	r = &resource{
-		readers: 0,
-		writers: 0,
-		queue:   make([]consumer, 1),
+		readers:    0,
+		readQueue:  make([]*chan bool, 0, 1),
+		writers:    0,
+		writeQueue: make([]*chan bool, 0, 1),
 	}
 
 	lm.locks[key] = r
