@@ -18,6 +18,14 @@ type Lock struct {
 	locks map[string]*resource
 }
 
+// KeyedRWMutex is the interface implemented by Lock
+type KeyedRWMutex interface {
+	Lock(string)
+	Unlock(string)
+	RLock(string)
+	RUnlock(string)
+}
+
 // NewLock returns a new Lock
 func NewLock() *Lock {
 	return &Lock{
