@@ -1,4 +1,4 @@
-package lm
+package mutexmap
 
 import (
 	"testing"
@@ -9,8 +9,8 @@ const (
 	waitTime = 1 * time.Millisecond
 )
 
-func TestLM(t *testing.T) {
-	lock := NewLock()
+func TestMutexMap(t *testing.T) {
+	mutex := NewMutexMap[string]()
 
 	runFullTest := func(key string) {
 		readers := 5
@@ -26,31 +26,31 @@ func TestLM(t *testing.T) {
 
 		go func() {
 			<-writerLock
-			lock.Lock(key)
+			mutex.Lock(key)
 			writing++
 			<-writerUnlock
 			writing--
-			lock.Unlock(key)
+			mutex.Unlock(key)
 		}()
 
 		for i := 0; i < readers; i++ {
 			go func() {
 				<-readerLock
-				lock.RLock(key)
+				mutex.RLock(key)
 				reading++
 				<-readerUnlock
 				reading--
-				lock.RUnlock(key)
+				mutex.RUnlock(key)
 			}()
 		}
 
 		go func() {
 			<-secondWriterLock
-			lock.Lock(key)
+			mutex.Lock(key)
 			writing++
 			<-secondWriterUnlock
 			writing--
-			lock.Unlock(key)
+			mutex.Unlock(key)
 		}()
 
 		if writing != 0 || reading != 0 {
@@ -128,14 +128,14 @@ func TestLM(t *testing.T) {
 		c2 := make(chan bool)
 
 		go func() {
-			lock.Lock(key)
-			lock.Unlock(key)
+			mutex.Lock(key)
+			mutex.Unlock(key)
 			c1 <- true
 		}()
 
 		go func() {
-			lock.RLock(key)
-			lock.RUnlock(key)
+			mutex.RLock(key)
+			mutex.RUnlock(key)
 			c2 <- true
 		}()
 
