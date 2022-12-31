@@ -1,3 +1,3 @@
-module github.com/manvalls/mutex-map
+module github.com/manvalls/mutexmap
 
 go 1.19
